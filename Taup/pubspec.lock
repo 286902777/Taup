@@ -472,6 +472,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.8.0"
+  image_gallery_saver:
+    dependency: "direct main"
+    description:
+      name: image_gallery_saver
+      sha256: "0aba74216a4d9b0561510cb968015d56b701ba1bd94aace26aacdd8ae5761816"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.3"
   image_picker:
     dependency: "direct main"
     description:
@@ -876,18 +884,18 @@ packages:
     dependency: "direct main"
     description:
       name: pro_image_editor
-      sha256: add1a4033ddf1e33e52f64676a676885d58d3a14ede5b20472b625cca5474e0c
+      sha256: b12229ecf7371f930f4acc3bdba2a69fd69330cf53b08bb28768db7f21b569c7
       url: "https://pub.dev"
     source: hosted
-    version: "12.4.5"
+    version: "12.4.3"
   pro_video_editor:
     dependency: "direct main"
     description:
       name: pro_video_editor
-      sha256: "5e46c5f62ad32d58c53943cf2577c2eda4fbbc02b0c24f0d7fc08fdcaae03d6b"
+      sha256: "86089e58cf61c8940ab87877565c3bdb9060a579e7fdc14e272db06b06a56315"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.1"
+    version: "1.14.0"
   pub_semver:
     dependency: transitive
     description:

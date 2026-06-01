@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_video_editor/core/platform/io/io_helper.dart';
@@ -145,7 +146,7 @@ class _EditContentPageState extends State<EditContentPage> {
       initialMuted: false,
       initialPlay: false,
       isAudioSupported: true,
-      minTrimDuration: Duration(seconds: 7),
+      minTrimDuration: Duration(seconds: 1),
       playTimeSmoothingDuration: Duration(milliseconds: 600),
     ),
     imageGeneration: const ImageGenerationConfigs(
@@ -306,7 +307,6 @@ class _EditContentPageState extends State<EditContentPage> {
 
     unawaited(_videoController.pause());
     unawaited(_audioService.pause());
-    final directory = await getTemporaryDirectory();
 
     final AudioTrack? selectedAudioTrack = parameters.audioTracks.isNotEmpty
         ? parameters.audioTracks.first
@@ -364,6 +364,9 @@ class _EditContentPageState extends State<EditContentPage> {
         exportModel,
       );
       widget.doneTap?.call('/$now.mp4');
+      await saveVideoToGallery(
+        '${ConfigTool.instance.directory}/myApp/$now.mp4',
+      );
     } on RenderCanceledException {
       stopwatch.stop();
       _outputPath = null;
@@ -371,6 +374,21 @@ class _EditContentPageState extends State<EditContentPage> {
       return;
     }
     _videoGenerationTime = stopwatch.elapsed;
+  }
+
+  Future<void> saveVideoToGallery(String videoPath) async {
+    try {
+      final File videoFile = File(videoPath);
+      final result = await ImageGallerySaver.saveFile(videoFile.path);
+
+      if (result['isSuccess'] == true) {
+        print('✅ 视频保存成功: ${result['filePath']}');
+      } else {
+        print('❌ 视频保存失败');
+      }
+    } catch (e) {
+      print('保存出错: $e');
+    }
   }
 
   /// Closes the video editor and opens a preview screen if a video was

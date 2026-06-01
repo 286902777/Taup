@@ -77,21 +77,25 @@ class _InfoWidgetState extends State<InfoWidget> {
             SizedBox(height: 5),
             if (widget.data.video)
               _buildMenuItem(
+                context,
                 icon: Assets.assetsEditIcon,
                 title: 'Edit',
                 index: 0,
               ),
             _buildMenuItem(
+              context,
               icon: Assets.assetsRenameIcon,
               title: 'Rename',
               index: 1,
             ),
             _buildMenuItem(
+              context,
               icon: Assets.assetsDeleteIcon,
               title: 'Delete',
               index: 2,
             ),
             _buildMenuItem(
+              context,
               icon: Assets.assetsInfoIcon,
               title: 'Info',
               index: 3,
@@ -102,14 +106,15 @@ class _InfoWidgetState extends State<InfoWidget> {
     );
   }
 
-  Widget _buildMenuItem({
+  Widget _buildMenuItem(
+    BuildContext context, {
     required String icon,
     required String title,
     required int index,
   }) {
     return GestureDetector(
       onTap: () {
-        clickItem(index);
+        clickItem(context, index);
       },
       child: SizedBox(
         height: 44,
@@ -133,10 +138,10 @@ class _InfoWidgetState extends State<InfoWidget> {
     );
   }
 
-  void clickItem(int index) {
+  void clickItem(BuildContext context, int index) {
     switch (index) {
       case 0:
-        break;
+        OpenTool.toVideoEdit(context, widget.data);
       case 1:
         SmartDialog.show(
           clickMaskDismiss: false,
