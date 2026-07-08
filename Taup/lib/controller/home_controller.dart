@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:signals/signals_flutter.dart';
 import 'package:taup/tool/bus_tool.dart';
@@ -17,11 +19,13 @@ class HomeController {
   // final channelList = <ChannelData>[].toSignal();
   final hasData = Signal(false);
   final ValueNotifier<int> valueNotifier = ValueNotifier(0);
+  StreamSubscription? _busSubscription;
+  bool _disposed = false;
 
   void initData() {
     loadLocalData();
     loadHistoryData();
-    BusTool.on().listen((res) {
+    _busSubscription ??= BusTool.on().listen((res) {
       if (res == AppInfo.busHome) loadLocalData();
       if (res == AppInfo.busHistory) loadHistoryData();
       // if (res == AppInfo.busChannel) loadChannelData();
@@ -38,34 +42,50 @@ class HomeController {
   }
 
   void loadLocalData() async {
+    if (_disposed) return;
     localList.value = [];
     final list = await DataTool.query(
       type: DataType.video,
       where: 'local = ?',
       args: [1],
     );
+    if (_disposed) return;
     localList.value = list.map((i) => VideoData.dbFromMap(i)).toList();
     isHasData();
   }
 
   /// 加载历史数据
   void loadHistoryData() async {
+    if (_disposed) return;
     historyList.value = [];
     final list = await DataTool.query(
       type: DataType.video,
       where: 'history = ?',
       args: [1],
     );
+    if (_disposed) return;
     historyList.value = list.map((i) => VideoData.dbFromMap(i)).toList();
     isHasData();
   }
 
   void isHasData() {
+    if (_disposed) return;
     if (localList.value.isNotEmpty || historyList.value.isNotEmpty) {
       hasData.value = true;
     } else {
       hasData.value = false;
     }
     valueNotifier.value = TimeTool.millisecondsSince();
+  }
+
+  void dispose() {
+    _disposed = true;
+    _busSubscription?.cancel();
+    _busSubscription = null;
+    localVideoList.dispose();
+    localList.dispose();
+    historyList.dispose();
+    hasData.dispose();
+    valueNotifier.dispose();
   }
 }

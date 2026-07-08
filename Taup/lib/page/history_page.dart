@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:signals/signals_flutter.dart';
 import 'package:taup/controller/history_controller.dart';
@@ -102,7 +103,7 @@ class _HistoryPageState extends State<HistoryPage> {
     final wid = MediaQuery.of(context).size.width;
     return Watch(
       (cxt) => ListView.separated(
-        cacheExtent: 100,
+        scrollCacheExtent: const ScrollCacheExtent.pixels(100),
         itemCount: controller.historyList.value.length,
         padding: EdgeInsets.zero,
         itemBuilder: (ctx, index) {

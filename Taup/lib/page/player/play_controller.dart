@@ -52,6 +52,8 @@ class PlayController {
 
   // PlayCountLimiter? playLimiter;
   Timer? _timer; //定时器
+  final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
+  double? _rateBeforeLongPress;
   // ChannelData? opChannel; //运营推荐
   Size viewSize = const Size(0, 0);
   DeviceOrientation orientation = DeviceOrientation.portraitUp; //屏幕方向
@@ -70,6 +72,7 @@ class PlayController {
     videoList = list;
     isHistory = history;
     playListCount.value = videoList.length;
+    _bindPlayerStreams();
     playVideo(index: index, value: value, auto: false);
     ConfigTool.instance.toPlaySceen = true;
     WakelockPlus.enable();
@@ -89,6 +92,10 @@ class PlayController {
   /// 销毁
   void dispose() async {
     _timer?.cancel();
+    for (final subscription in _playerSubscriptions) {
+      await subscription.cancel();
+    }
+    _playerSubscriptions.clear();
     // playLimiter?.dispose();
     WakelockPlus.disable();
     VolumeController.instance.showSystemUI = true;
@@ -105,6 +112,42 @@ class PlayController {
       orientation = DeviceOrientation.portraitUp;
       await SystemChrome.setPreferredOrientations([orientation]);
     }
+    await player.dispose();
+  }
+
+  void _bindPlayerStreams() {
+    if (_playerSubscriptions.isNotEmpty) return;
+
+    _playerSubscriptions.addAll([
+      player.stream.buffering.listen((bool buffer) {
+        loadType.value = buffer ? PlayLoadType.cache : PlayLoadType.none;
+      }),
+      player.stream.videoParams.listen((VideoParams para) {
+        final w = para.w ?? 0;
+        final h = para.h ?? 0;
+        if (w > 0 && h > 0) {
+          loadType.value = PlayLoadType.none;
+        }
+      }),
+      player.stream.position.listen((Duration position) async {
+        playPosition.value = position.inSeconds;
+        playData.position = position.inSeconds;
+      }),
+      player.stream.duration.listen((Duration duration) {
+        playDuration.value = duration.inSeconds;
+        playData.duration = duration.inSeconds;
+        saveHistoryVideo();
+      }),
+      player.stream.playing.listen((bool playing) {
+        playPlaying.value = playing;
+      }),
+      player.stream.completed.listen((bool completed) async {
+        if (completed) {
+          playPlaying.value = false;
+          videoPlayNext(auto: true);
+        }
+      }),
+    ]);
   }
 
   /// 播放视频
@@ -113,51 +156,55 @@ class PlayController {
     required EventValue value,
     required bool auto,
   }) async {
-    if (playData.recommend == true) {
+    if (videoList.isEmpty || index < 0 || index >= videoList.length) return;
+
+    playIndex.value = index;
+    final data = playData;
+    if (data.recommend == true) {
       ConfigTool.instance.currentEmail = '';
     } else {
       ConfigTool.instance.currentEmail = '';
     }
     adValue = value;
-    playIndex.value = index;
     loadType.value = PlayLoadType.load;
     final EventValue method = auto ? EventValue.auto : EventValue.click;
     EventTool.otherTabEvent(
       event: EventName.playStart,
       method: method,
-      data: playData,
+      data: data,
     );
     // _disPlayAds(scene: value);
     showOrHiddenToolWidget(true);
 
     try {
-      if (playData.path != null) {
-        final path = '${ConfigTool.instance.directory}/myApp${playData.path}';
-        if (playData.duration > 0) {
-          player.open(
-            Media(path, start: Duration(seconds: playData.duration)),
-            play: false,
-          );
-        } else {
-          player.open(Media(path), play: false);
-        }
+      final startPosition =
+          data.position > 0 &&
+              (data.duration == 0 || data.position < data.duration)
+          ? Duration(seconds: data.position)
+          : null;
+      if (data.path != null) {
+        final path = '${ConfigTool.instance.directory}/myApp${data.path}';
+        await player.open(
+          startPosition == null
+              ? Media(path)
+              : Media(path, start: startPosition),
+          play: false,
+        );
       } else {
         // if (playData.url == null) {
         //   final String? res = await HttpsApi.downloadFileUrl(playData);
         //   playData.url = res;
         // }
-        if (playData.url != null) {
-          if (playData.duration > 0) {
-            player.open(
-              Media(
-                playData.url ?? '',
-                start: Duration(seconds: playData.duration),
-              ),
-              play: false,
-            );
-          } else {
-            player.open(Media(playData.url ?? ''), play: false);
-          }
+        if (data.url != null) {
+          final url = data.url ?? '';
+          await player.open(
+            startPosition == null
+                ? Media(url)
+                : Media(url, start: startPosition),
+            play: false,
+          );
+        } else {
+          throw StateError('Missing media source');
         }
       }
       await player.play();
@@ -168,7 +215,7 @@ class PlayController {
       EventTool.otherTabEvent(
         event: EventName.playFail,
         value: code,
-        data: playData,
+        data: data,
       );
     }
     // final video = playerCtr?.value;
@@ -214,36 +261,6 @@ class PlayController {
     //   if (playTime == 0 || playTime % playAdTime != 0) return;
     //   _disPlayPlayingAd(scene: EventValue.play_ten);
     // }
-    player.stream.buffering.listen((bool buffer) {
-      loadType.value = buffer ? PlayLoadType.cache : PlayLoadType.none;
-    });
-
-    player.stream.videoParams.listen((VideoParams para) {
-      int w = para.w ?? 0;
-      int h = para.h ?? 0;
-      if (w > 0 && h > 0) {
-        loadType.value = PlayLoadType.load;
-      }
-    });
-    player.stream.position.listen((Duration position) async {
-      playPosition.value = position.inSeconds;
-      playData.position = position.inSeconds;
-    });
-    player.stream.duration.listen((Duration duration) {
-      playDuration.value = duration.inSeconds;
-      playData.duration = duration.inSeconds;
-      saveHistoryVideo();
-    });
-    player.stream.playing.listen((bool playing) {
-      playPlaying.value = playing;
-    });
-    player.stream.completed.listen((bool completed) async {
-      if (completed) {
-        playPlaying.value = false;
-        videoPlayNext(auto: true);
-        return;
-      }
-    });
   }
 
   /// 上一曲
@@ -290,9 +307,6 @@ class PlayController {
   void popAction() {
     player.pause();
     popupType.value = PlayPopupType.product;
-    bool isFull =
-        (orientation == DeviceOrientation.landscapeRight) ||
-        (orientation == DeviceOrientation.landscapeLeft);
     // SmartDialog.show(
     //   clickMaskDismiss: false,
     //   maskColor: Color(0x65000000),
@@ -508,11 +522,20 @@ class PlayController {
     if (player.state.playing == false) return;
     if (playSpeed.value == 2.0) return;
     double touchDx = details.localPosition.dx;
-    if (touchDx > viewSize.width * 0.35 || touchDx < viewSize.width * 0.65) {
+    if (touchDx > viewSize.width * minS && touchDx < viewSize.width * maxE) {
+      _rateBeforeLongPress = playSpeed.value;
       playSpeed.value = 2.0;
       player.setRate(2.0);
     }
     showOrHiddenToolWidget(true);
+  }
+
+  void playLongPressEndEvent(LongPressEndDetails details) {
+    final previousRate = _rateBeforeLongPress;
+    if (previousRate == null) return;
+    _rateBeforeLongPress = null;
+    playSpeed.value = previousRate;
+    player.setRate(previousRate);
   }
 
   /// 保存历史

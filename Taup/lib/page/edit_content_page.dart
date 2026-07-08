@@ -6,9 +6,7 @@ import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
-import 'package:pro_video_editor/core/platform/io/io_helper.dart';
 import 'package:pro_video_editor/pro_video_editor.dart';
 import 'package:taup/data/video_data.dart';
 import 'package:video_player/video_player.dart' hide VideoAudioTrack;
@@ -76,12 +74,14 @@ class _EditContentPageState extends State<EditContentPage> {
 
   /// The duration it took to generate the exported video.
   Duration _videoGenerationTime = Duration.zero;
-  late VideoPlayerController _videoController;
+  VideoPlayerController? _videoController;
+  AudioHelperService? _audioService;
 
-  late final _audioService = AudioHelperService(
-    videoController: _videoController,
-  );
   final _updateClipsNotifier = ValueNotifier(false);
+
+  VideoPlayerController get _activeVideoController => _videoController!;
+
+  AudioHelperService get _activeAudioService => _audioService!;
 
   late final ProImageEditorConfigs _configs = ProImageEditorConfigs(
     dialogConfigs: DialogConfigs(
@@ -162,10 +162,47 @@ class _EditContentPageState extends State<EditContentPage> {
 
   @override
   void dispose() {
-    _videoController.dispose();
-    _audioService.dispose();
+    _disposePlayback();
     _updateClipsNotifier.dispose();
     super.dispose();
+  }
+
+  void _disposePlayback() {
+    _videoController?.removeListener(_onDurationChange);
+    final videoController = _videoController;
+    final audioService = _audioService;
+    _videoController = null;
+    _audioService = null;
+    if (videoController != null) {
+      unawaited(videoController.dispose());
+    }
+    if (audioService != null) {
+      unawaited(audioService.dispose());
+    }
+  }
+
+  Future<VideoPlayerController?> _createPlaybackController(String path) async {
+    _disposePlayback();
+
+    final videoController = VideoPlayerController.file(io.File(path));
+    final audioService = AudioHelperService(videoController: videoController);
+    _videoController = videoController;
+    _audioService = audioService;
+
+    await Future.wait([
+      videoController.initialize(),
+      videoController.setLooping(false),
+      videoController.setVolume(_configs.videoEditor.initialMuted ? 0 : 100),
+      _configs.videoEditor.initialPlay
+          ? videoController.play()
+          : videoController.pause(),
+      audioService.initialize(),
+    ]);
+
+    if (!mounted || _videoController != videoController) return null;
+
+    videoController.addListener(_onDurationChange);
+    return videoController;
   }
 
   /// Loads and sets [_videoMetadata] for the given [_video].
@@ -231,20 +268,10 @@ class _EditContentPageState extends State<EditContentPage> {
       _generateThumbnails();
     });
 
-    _videoController = VideoPlayerController.file(
-      io.File('${ConfigTool.instance.directory}/myApp${widget.data.path}'),
+    final videoController = await _createPlaybackController(
+      '${ConfigTool.instance.directory}/myApp${widget.data.path}',
     );
-
-    await Future.wait([
-      _videoController.initialize(),
-      _videoController.setLooping(false),
-      _videoController.setVolume(_configs.videoEditor.initialMuted ? 0 : 100),
-      _configs.videoEditor.initialPlay
-          ? _videoController.play()
-          : _videoController.pause(),
-      _audioService.initialize(),
-    ]);
-    if (!mounted) return;
+    if (!mounted || videoController == null) return;
 
     _proVideoController = ProVideoController(
       videoPlayer: _buildVideoPlayer(),
@@ -254,15 +281,17 @@ class _EditContentPageState extends State<EditContentPage> {
       thumbnails: _thumbnails,
     );
 
-    _videoController.addListener(_onDurationChange);
-
     setState(() {});
   }
 
   void _onDurationChange() {
-    var totalVideoDuration = _videoMetadata.duration;
-    var duration = _videoController.value.position;
-    _proVideoController!.setPlayTime(duration);
+    final videoController = _videoController;
+    final proVideoController = _proVideoController;
+    if (videoController == null || proVideoController == null) return;
+
+    final totalVideoDuration = _videoMetadata.duration;
+    final duration = videoController.value.position;
+    proVideoController.setPlayTime(duration);
 
     if (_durationSpan != null && duration >= _durationSpan!.end) {
       _seekToPosition(_durationSpan!);
@@ -274,6 +303,10 @@ class _EditContentPageState extends State<EditContentPage> {
   }
 
   Future<void> _seekToPosition(TrimDurationSpan span) async {
+    final videoController = _videoController;
+    final proVideoController = _proVideoController;
+    if (videoController == null || proVideoController == null) return;
+
     _durationSpan = span;
 
     if (_isSeeking) {
@@ -282,11 +315,11 @@ class _EditContentPageState extends State<EditContentPage> {
     }
     _isSeeking = true;
 
-    _proVideoController!.pause();
-    _proVideoController!.setPlayTime(_durationSpan!.start);
+    proVideoController.pause();
+    proVideoController.setPlayTime(_durationSpan!.start);
 
-    await _videoController.pause();
-    await _videoController.seekTo(span.start);
+    await videoController.pause();
+    await videoController.seekTo(span.start);
 
     _isSeeking = false;
 
@@ -303,10 +336,14 @@ class _EditContentPageState extends State<EditContentPage> {
   /// Applies blur, color filters, cropping, rotation, flipping, and trimming
   /// before exporting using FFmpeg. Measures and stores the generation time.
   Future<void> _generateVideo(CompleteParameters parameters) async {
+    final videoController = _videoController;
+    final audioService = _audioService;
+    if (videoController == null || audioService == null) return;
+
     final stopwatch = Stopwatch()..start();
 
-    unawaited(_videoController.pause());
-    unawaited(_audioService.pause());
+    unawaited(videoController.pause());
+    unawaited(audioService.pause());
 
     final AudioTrack? selectedAudioTrack = parameters.audioTracks.isNotEmpty
         ? parameters.audioTracks.first
@@ -348,7 +385,7 @@ class _EditContentPageState extends State<EditContentPage> {
       audioTracks: selectedAudioTrack != null
           ? [
               VideoAudioTrack(
-                path: (await _audioService.safeCustomAudioPath(
+                path: (await audioService.safeCustomAudioPath(
                   selectedAudioTrack,
                 ))!,
                 volume: overlayVolume,
@@ -378,7 +415,7 @@ class _EditContentPageState extends State<EditContentPage> {
 
   Future<void> saveVideoToGallery(String videoPath) async {
     try {
-      final File videoFile = File(videoPath);
+      final videoFile = io.File(videoPath);
       final result = await ImageGallerySaver.saveFile(videoFile.path);
 
       if (result['isSuccess'] == true) {
@@ -450,9 +487,7 @@ class _EditContentPageState extends State<EditContentPage> {
     void Function(double) onProgress,
   ) async {
     LoadingDialog.instance.show(context, configs: _configs);
-    final directory = await getApplicationCacheDirectory();
-    // final updatedFile = File('${directory.path}/temp.mp4');
-    final updatedFile = File(
+    final updatedFile = io.File(
       '${ConfigTool.instance.directory}/myApp${widget.data.path}',
     );
 
@@ -485,7 +520,14 @@ class _EditContentPageState extends State<EditContentPage> {
 
     await _setMetadata();
     await _generateThumbnails(updateClipThumbnails: false);
-    await _initializePlayer();
+    _configs.clipsEditor.clips.first = _configs.clipsEditor.clips.first
+        .copyWith(duration: _videoMetadata.duration);
+
+    final videoController = await _createPlaybackController(updatedFile.path);
+    if (!mounted || videoController == null) {
+      LoadingDialog.instance.hide();
+      return;
+    }
 
     final editor = _editorKey.currentState!;
 
@@ -503,16 +545,10 @@ class _EditContentPageState extends State<EditContentPage> {
           callbacksFunction: () =>
               editor.callbacks.videoEditorCallbacks ?? VideoEditorCallbacks(),
         );
-
-    /// Load the new video
-    final controller = VideoPlayerController.file(io.File(updatedFile.path));
-    await controller.initialize();
     LoadingDialog.instance.hide();
 
     if (!mounted) return;
 
-    _videoController = controller;
-    _videoController.addListener(_onDurationChange);
     editor.initializeVideoEditor();
 
     _updateClipsNotifier.value = false;
@@ -537,33 +573,33 @@ class _EditContentPageState extends State<EditContentPage> {
         onCompleteWithParameters: _generateVideo,
         onCloseEditor: _handleCloseEditor,
         videoEditorCallbacks: VideoEditorCallbacks(
-          onPause: _videoController.pause,
-          onPlay: _videoController.play,
+          onPause: _activeVideoController.pause,
+          onPlay: _activeVideoController.play,
           onMuteToggle: (isMuted) {
             if (isMuted) {
-              _audioService.setVolume(0);
-              _videoController.setVolume(0);
+              _activeAudioService.setVolume(0);
+              _activeVideoController.setVolume(0);
             } else {
-              _audioService.balanceAudio();
+              _activeAudioService.balanceAudio();
             }
           },
           onTrimSpanUpdate: (durationSpan) {
-            if (_videoController.value.isPlaying) {
+            if (_activeVideoController.value.isPlaying) {
               _proVideoController!.pause();
             }
           },
           onTrimSpanEnd: _seekToPosition,
         ),
         audioEditorCallbacks: AudioEditorCallbacks(
-          onBalanceChange: _audioService.balanceAudio,
+          onBalanceChange: _activeAudioService.balanceAudio,
           onStartTimeChange: (startTime) async {
             await Future.value([
-              _audioService.seek(startTime),
-              _videoController.seekTo(Duration.zero),
+              _activeAudioService.seek(startTime),
+              _activeVideoController.seekTo(Duration.zero),
             ]);
           },
-          onPlay: _audioService.play,
-          onStop: (audio) => _audioService.pause(),
+          onPlay: _activeAudioService.play,
+          onStop: (audio) => _activeAudioService.pause(),
         ),
         clipsEditorCallbacks: ClipsEditorCallbacks(
           onBuildPlayer: (controller, videoClip) {
@@ -629,12 +665,16 @@ class _EditContentPageState extends State<EditContentPage> {
     return ValueListenableBuilder(
       valueListenable: _updateClipsNotifier,
       builder: (_, isLoading, _) {
+        final videoController = _videoController;
         return Center(
-          child: isLoading
+          child:
+              isLoading ||
+                  videoController == null ||
+                  !videoController.value.isInitialized
               ? const CircularProgressIndicator.adaptive()
               : AspectRatio(
-                  aspectRatio: _videoController.value.size.aspectRatio,
-                  child: VideoPlayer(_videoController),
+                  aspectRatio: videoController.value.size.aspectRatio,
+                  child: VideoPlayer(videoController),
                 ),
         );
       },

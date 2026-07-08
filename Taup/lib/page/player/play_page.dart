@@ -90,6 +90,7 @@ class _PlayPageState extends State<PlayPage> {
                 onDoubleTapDown: controller.playDoubleTapDown,
                 onVerticalDragEnd: controller.playVerticalEndEvent,
                 onLongPressStart: controller.playLongPressStartEvent,
+                onLongPressEnd: controller.playLongPressEndEvent,
                 onVerticalDragStart: controller.playVerticalStartEvent,
                 onVerticalDragUpdate: controller.playVerticalUpdateEvent,
                 child: Container(

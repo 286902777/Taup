@@ -32,6 +32,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Watch.builder(
       builder: (ctx) {
@@ -265,59 +271,6 @@ class _HomePageState extends State<HomePage> {
                     EventValue.history,
                   );
                 },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChannelSection() {
-    final List<String> channels = [
-      'Username',
-      'Username',
-      'Username',
-      'Username',
-      'Use',
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'Channel',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-        ),
-        SizedBox(
-          height: 90,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: channels.length,
-            itemBuilder: (context, index) {
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 55,
-                      height: 55,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF1C1C1E),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.person, size: 28, color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(channels[index], style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
               );
             },
           ),
